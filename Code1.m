@@ -1,9 +1,9 @@
 % Load your data
 data = readtable('your_data.csv'); % Replace with your data source
 % Separate features 
-numerical_features = data2(:, 1:2);
-categorical_features = data2(:, 3:5);
-out=data2(:,6)
+numerical_features = data(:, 1:2);
+categorical_features = data(:, 3:5);
+out=data(:,6)
 
 %% % Convert categorical variables to dummy variables (one-hot encoding)
 % One-hot encoding for concreteOverlay
