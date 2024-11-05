@@ -1,11 +1,11 @@
 % Load your data
 data = readtable('your_data.csv'); % Replace with your data source
-% Separate features 
+% Separate features and autpot parameter 
 numerical_features = data(:, 1:2);
 categorical_features = data(:, 3:5);
 out=data(:,6)
-
-%% % Convert categorical variables to dummy variables (one-hot encoding)
+%%%to handle the categorical variables in ANN  
+%%% step 1 Convert categorical variables to dummy variables (one-hot encoding)
 % One-hot encoding for concreteOverlay
 concreteOverlay_dummy = dummyvar(categorical_features.concreteOverlay);
 % One-hot encoding for concreteOverlay
@@ -13,19 +13,19 @@ testType_dummy = dummyvar(categorical_features.testType);
 % One-hot encoding for concreteOverlay
 surfaceRoughness_dummy = dummyvar(categorical_features.surfaceRoughness);
 
-%%%% Create variable names for the one-hot encoded columns
+%%%% step 2 Create variable names for the one-hot encoded columns
 concreteOverlay_varnames = strcat('concreteOverlay_', string(categories(categorical_features.concreteOverlay)'));
 testType_varnames = strcat('testType_', string(categories(categorical_features.testType))');
 surfaceRoughness_varnames = strcat('surfaceRoughness_', string(categories(categorical_features.surfaceRoughness))');
 
-%%% Convert dummy variables to table
+%%% step 3 Convert dummy variables to table
 concreteOverlay_table = array2table(concreteOverlay_dummy, 'VariableNames', concreteOverlay_varnames);
 testType_table = array2table(testType_dummy, 'VariableNames', testType_varnames);
 surfaceRoughness_table = array2table(surfaceRoughness_dummy, 'VariableNames', surfaceRoughness_varnames);
-% Combine all tables
+% step 4 Combine all tables
 encoded_data = [testType_table,surfaceRoughness_table, concreteOverlay_table];
 disp(encoded_data);
-
+%%normalization of numerical features using min-max normalization 
 %%  Perform Min-Max Normalization for numerical_features
 % Check the data type
 disp(class(numerical_features));
@@ -37,12 +37,13 @@ disp(class(out));
 if istable(out)
     out = table2array(out);
 end
+%%% normalization of output parameter
 y1min=min(out(:,1));
 y1max=max(out(:,1));
 out1_norm=(out(:,1)-y1min)/(y1max-y1min);
 out_norm=[out1_norm]
 o= out_norm;
-%% % Combine all features back into a single table in this step the all features must be numeric array
+%%% Combine all input features back into a single table in this step the all features must be numeric array
 % Convert encoded_data to numeric array if it is a table
 if istable(encoded_data)
     encoded_data = table2array(encoded_data);
@@ -50,74 +51,71 @@ end
 data=[encoded_data, normalized_numerical_features_minmax];
 disp(data)
 
-%% %%build artificial neural network
-input=data(:,1:13);
-output=o;
+%% %% build artificial neural network
+% Load data and create network
+input = data(:, 1:13);
+output = o;
 
-inputs =  input';
+inputs = input';
 targets = o';
 
 % Create a Fitting Network
-hiddenLayer1Size = [10];
+hiddenLayer1Size = [19];
 net = fitnet(hiddenLayer1Size);
 
-
 % Choose Input and Output Pre/Post-Processing Functions
-% For a list of all processing functions type: help nnprocess
-net.inputs{1}.processFcns = {'removeconstantrows','mapminmax'};
-net.outputs{2}.processFcns = {'removeconstantrows','mapminmax'};
-
+net.inputs{1}.processFcns = {'removeconstantrows', 'mapminmax'};
+net.outputs{2}.processFcns = {'removeconstantrows', 'mapminmax'};
 
 % Setup Division of Data for Training, Validation, Testing
-% For a list of all data division functions type: help nndivide
 net.divideFcn = 'dividerand';  % Divide data randomly
-net.divideMode = 'sample';  % Divide up every sample
-net.divideParam.trainRatio = 75/100;
-net.divideParam.valRatio = 15/100;
-net.divideParam.testRatio =10/100;
+net.divideMode = 'sample';     % Divide every sample
+net.divideParam.trainRatio = 0.75;
+net.divideParam.valRatio = 0.15;
+net.divideParam.testRatio = 0.10;
 
-% For help on training function 'trainlm' type: help trainlm
-% For a list of all training functions type: help nntrain
+% Set training function
 net.trainFcn = 'trainlm';  % Levenberg-Marquardt
 
-% Choose a Performance Function
-% For a list of all performance functions type: help nnperformance
-net.performFcn = 'mse';  % Mean square error
+% Choose Performance Function with L2 Regularization
+net.performFcn = 'mse';  % Mean Squared Error
+net.performParam.regularization = 0.01; % L2 regularization term (adjust this as needed)
+
+% Set activation functions
+net.layers{1}.transferFcn = 'tansig';  % Tansig for the hidden layer
+net.layers{2}.transferFcn = 'tansig';  % Tansig for the output layer
 
 % Choose Plot Functions
-% For a list of all plot functions type: help nnplot
-net.plotFcns = {'plotperform','plottrainstate','ploterrhist', ...
-  'plotregression', 'plotfit'};
-
+net.plotFcns = {'plotperform', 'plottrainstate', 'ploterrhist', 'plotregression', 'plotfit'};
 
 % Train the Network
-[net,tr] = train(net,inputs,targets);
+[net, tr] = train(net, inputs, targets);
 
 % Test the Network
 outputs = net(inputs);
-errors = gsubtract(targets,outputs);
-performance = perform(net,targets,outputs)
+errors = gsubtract(targets, outputs);
+performance = perform(net, targets, outputs);
 
-% Recalculate Training, Validation and Test Performance
+% Recalculate Training, Validation, and Test Performance
 trainTargets = targets .* tr.trainMask{1};
-valTargets = targets  .* tr.valMask{1};
-testTargets = targets  .* tr.testMask{1};
-trainPerformance = perform(net,trainTargets,outputs)
-valPerformance = perform(net,valTargets,outputs)
-testPerformance = perform(net,testTargets,outputs)
+valTargets = targets .* tr.valMask{1};
+testTargets = targets .* tr.testMask{1};
+trainPerformance = perform(net, trainTargets, outputs);
+valPerformance = perform(net, valTargets, outputs);
+testPerformance = perform(net, testTargets, outputs);
 
 % View the Network
-view(net)
+view(net);
 
 % Plots
 % Uncomment these lines to enable various plots.
-%figure, plotperform(tr)
-%figure, plottrainstate(tr)
-%figure, plotfit(net,inputs,targets)
-%figure, plotregression(targets,outputs)
-%figure, ploterrhist(errors)
-%% determinde the ANN sensitivity
+% figure, plotperform(tr)
+% figure, plottrainstate(tr)
+% figure, plotfit(net, inputs, targets)
+% figure, plotregression(targets, outputs)
+% figure, ploterrhist(errors)
 
+%%% determinde the ANN sensitivit
 % Step 1: Get weights
 weightsInputToHidden = net.IW{1}; % Weights from input to hidden layer
 weightsHiddenToOutput = net.LW{2,1}; % Weights from hidden to output layer
@@ -175,7 +173,8 @@ for k = 1:numOutputs
         fprintf('Contribution of Input %d to Output %d: %.4f\n', i, k, Q(i, k));
     end
 end
-%% prediction
+
+%% use the trained ANN in prediction
 test = readtable('test.csv'); % Replace with your data source
 % Separate features 
 numerica2_features = test(:, 4:5);
@@ -220,8 +219,8 @@ ytest = net(data_test')';
 ytest_denorm1=(ytest(:,1)*(y1max-y1min)+y1min);
 ytest_denorm=[ ytest_denorm1];
 disp(ytest_denorm)
-%%
-% Extract weights and biases from input to hidden layer
+
+%%% Extract weights and biases from input to hidden layer
 W1 = net.IW{1, 1}; % Weights from input to hidden layer
 b1 = net.b{1};     % Biases for hidden layer
 
